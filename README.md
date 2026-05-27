@@ -4,7 +4,7 @@ Stable Audio 3 inference in Rust, powered by MNN CUDA + ONNX Runtime.
 
 ## Overview
 
-This project provides a high-performance inference pipeline for [Stable Audio 3](https://huggingface.co/stabilityai/stable-audio-3) with MNN CUDA backend. It achieves real-time audio generation on consumer GPUs through CUDA-accelerated MNN models and chunked decoding.
+This project provides a high-performance inference pipeline for [Stable Audio 3](https://huggingface.co/collections/stabilityai/stable-audio-3) with MNN CUDA backend. It achieves real-time audio generation on consumer GPUs through CUDA-accelerated MNN models and chunked decoding.
 
 Pre-converted MNN models are available at [🤗 cgisky/stable-audio-3-mnn](https://huggingface.co/cgisky/stable-audio-3-mnn).
 
@@ -164,8 +164,8 @@ The T5Gemma text encoder currently **must** use ONNX Runtime instead of MNN CUDA
 - [🤗 cgisky/stable-audio-3-mnn](https://huggingface.co/cgisky/stable-audio-3-mnn) — Pre-converted MNN models
 - [cgisky1980/MNN](https://github.com/cgisky1980/MNN) — MNN fork with CUDA bug fixes
 - [alibaba/MNN](https://github.com/alibaba/MNN) — Upstream MNN
-- [stabilityai/stable-audio-3](https://huggingface.co/stabilityai/stable-audio-3) — Original model
+- [stabilityai/stable-audio-3](https://huggingface.co/collections/stabilityai/stable-audio-3) — Original model
 
 ## License
 
-Stable Audio Community License — see the [model card](https://huggingface.co/stabilityai/stable-audio-3) for details.
+Stable Audio Community License — see the [model card](https://huggingface.co/collections/stabilityai/stable-audio-3) for details.
