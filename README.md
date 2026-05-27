@@ -61,29 +61,36 @@ Duration   → NumberConditioner (MNN CUDA) → Duration Embedding
 
 ## Setup
 
-1. Download models from [🤗 cgisky/stable-audio-3-mnn](https://huggingface.co/cgisky/stable-audio-3-mnn)
+1. Download models and pre-built DLLs from [🤗 cgisky/stable-audio-3-mnn](https://huggingface.co/cgisky/stable-audio-3-mnn). The `dll/` directory contains pre-compiled Windows DLLs (`MNN.dll` and `mnn_dit_bridge.dll`) built with CUDA support — no need to compile MNN yourself.
 
-2. Build MNN with CUDA (see [cgisky1980/MNN](https://github.com/cgisky1980/MNN) for Windows build patches):
-   ```bash
-   cmake .. -G "Visual Studio 17 2022" -A x64 \
-     -DMNN_BUILD_SHARED_LIBS=ON \
-     -DMNN_CUDA=ON \
-     -DMNN_CUDA_NATIVE_ARCH=ON \
-     -DCMAKE_BUILD_TYPE=Release
-   cmake --build . --config Release
-   ```
+2. Place `MNN.dll`, `mnn_dit_bridge.dll`, and model files in your models directory.
 
-3. Build the bridge DLL:
-   ```bash
-   cd bridge && cmake .. && cmake --build . --config Release
-   ```
+3. Install [ONNX Runtime](https://onnxruntime.ai/) (required for T5 text encoder).
 
-4. Place `MNN.dll`, `mnn_dit_bridge.dll`, and model files in your models directory.
-
-5. Build and run:
+4. Build and run:
    ```bash
    cargo build --release
    ```
+
+<details>
+<summary>Building MNN from source (optional)</summary>
+
+If you want to build MNN yourself, see [cgisky1980/MNN](https://github.com/cgisky1980/MNN) for Windows build patches:
+
+```bash
+cmake .. -G "Visual Studio 17 2022" -A x64 \
+  -DMNN_BUILD_SHARED_LIBS=ON \
+  -DMNN_CUDA=ON \
+  -DMNN_CUDA_NATIVE_ARCH=ON \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build . --config Release
+```
+
+Then build the bridge DLL:
+```bash
+cd bridge && cmake .. && cmake --build . --config Release
+```
+</details>
 
 ## Usage
 
