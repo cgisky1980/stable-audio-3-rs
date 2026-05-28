@@ -422,7 +422,6 @@ fn extract_array3_f32(
 }
 
 pub struct StableAudio3Models {
-    t5_ort: Option<Session>,
     t5_mnn: Option<MNNModel>,
     nc_ort: Option<Session>,
     nc_mnn: Option<MNNModel>,
@@ -446,32 +445,27 @@ impl StableAudio3Models {
         mnn_gpu: i32,
         mnn_int8: bool,
         mnn_fp32: bool,
-        mnn_t5: bool,
+        mnn_t5_fp32: bool,
         t_lat: usize,
     ) -> Result<Self> {
         let variant_key = variant.replace("sm-", "");
         let mnn_precision: i32 = if mnn_fp32 { 1 } else { 0 };
 
         if use_mnn {
-            let (t5_ort, t5_mnn) = if mnn_t5 {
+            let t5_mnn = {
                 let t0 = std::time::Instant::now();
-                log("  加载 T5 (MNN CPU)...");
-                let m = MNNModel::load(models_dir, "text_encoder.mnn", 0, 12, mnn_precision)?;
+                let t5_file = if mnn_t5_fp32 {
+                    "text_encoder.mnn"
+                } else {
+                    "text_encoder_int4.mnn"
+                };
+                log(&format!("  加载 T5 (MNN CPU): {t5_file}..."));
+                let m = MNNModel::load(models_dir, t5_file, 0, 12, mnn_precision)?;
                 log(&format!(
                     "    T5 加载耗时: {:.2}s",
                     t0.elapsed().as_secs_f32()
                 ));
-                (None, Some(m))
-            } else {
-                let t0 = std::time::Instant::now();
-                log("  加载 T5 (ORT Q8)...");
-                let t5_path = models_dir.join("text_encoder_q8.onnx");
-                let sess = create_session(&t5_path, use_gpu)?;
-                log(&format!(
-                    "    T5 加载耗时: {:.2}s",
-                    t0.elapsed().as_secs_f32()
-                ));
-                (Some(sess), None)
+                Some(m)
             };
             let nc = {
                 let t0 = std::time::Instant::now();
@@ -562,13 +556,16 @@ impl StableAudio3Models {
                 Tokenizer::from_file(&tok_path)
                     .map_err(|e| anyhow!("Failed to load tokenizer: {e}"))?
             };
-            let t5_label = if mnn_t5 { "MNN-CPU" } else { "ORT" };
+            let t5_label = if mnn_t5_fp32 {
+                "MNN-CPU"
+            } else {
+                "MNN-CPU-INT4"
+            };
             let mnn_label = if mnn_int8 { "MNN-INT8" } else { "MNN-CUDA" };
             log(&format!(
                 "  所有模型加载完成 (T5={t5_label}, NC/DiT/Decoder={mnn_label})"
             ));
             Ok(Self {
-                t5_ort,
                 t5_mnn,
                 nc_ort: None,
                 nc_mnn: Some(nc),
@@ -582,7 +579,6 @@ impl StableAudio3Models {
                 tokenizer,
             })
         } else {
-            let t5_path = models_dir.join("text_encoder_q8.onnx");
             let dit_path = {
                 let p1 = models_dir.join(format!("dit_{variant_key}_fp16_v2_f32io.onnx"));
                 let p2 = models_dir.join(format!("dit_{variant_key}_fp16_f32io.onnx"));
@@ -595,14 +591,7 @@ impl StableAudio3Models {
             let dec_path = models_dir.join("decoder_q8.onnx");
             let tok_path = models_dir.join("tokenizer.json");
 
-            let t5 = {
-                log(&format!(
-                    "  加载 T5: {} [GPU={}]",
-                    t5_path.display(),
-                    use_gpu
-                ));
-                create_session(&t5_path, use_gpu)?
-            };
+            let t5 = MNNModel::load(models_dir, "text_encoder.mnn", 0, 12, 0)?;
             let nc = {
                 log("  加载 NC (MNN FP16)...");
                 let name = format!("number_conditioner_{variant_key}_fp16.mnn");
@@ -631,8 +620,7 @@ impl StableAudio3Models {
             };
             log("  所有 ORT 模型加载完成 (NC=MNN FP16)");
             Ok(Self {
-                t5_ort: Some(t5),
-                t5_mnn: None,
+                t5_mnn: Some(t5),
                 nc_ort: None,
                 nc_mnn: Some(nc),
                 dit_ort: Some(dit),
@@ -676,18 +664,8 @@ impl StableAudio3Models {
             mnn.run()?;
             let hidden = mnn.get_output_array3("last_hidden_state")?;
             Ok((hidden, mask))
-        } else if let Some(ref mut sess) = self.t5_ort {
-            let ids_val = Tensor::<i64>::from_array(ids.clone())
-                .map_err(|e| anyhow!("Failed to create ids tensor: {e}"))?;
-            let mask_val = Tensor::<i64>::from_array(mask.clone())
-                .map_err(|e| anyhow!("Failed to create mask tensor: {e}"))?;
-            let outputs = sess
-                .run(ort::inputs!["input_ids" => ids_val, "attention_mask" => mask_val])
-                .map_err(|e| anyhow!("T5 inference failed: {e}"))?;
-            let hidden = extract_array3_f32(&outputs, "last_hidden_state")?;
-            Ok((hidden, mask))
         } else {
-            Err(anyhow!("No T5 backend available"))
+            Err(anyhow!("T5 model not loaded"))
         }
     }
 
