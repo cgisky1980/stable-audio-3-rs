@@ -65,11 +65,12 @@ impl StableAudio3 {
         use_mnn: bool,
         mnn_gpu: i32,
         mnn_int8: bool,
+        mnn_fp32: bool,
         duration: f32,
     ) -> Result<Self> {
         let t_lat = compute_latent_len(duration);
         let models = StableAudio3Models::load(
-            models_dir, variant, use_gpu, use_mnn, mnn_gpu, mnn_int8, t_lat,
+            models_dir, variant, use_gpu, use_mnn, mnn_gpu, mnn_int8, mnn_fp32, t_lat,
         )?;
         Ok(Self {
             models,

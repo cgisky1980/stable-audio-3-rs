@@ -124,9 +124,9 @@ fn main() -> Result<()> {
             unsafe { fn_get_output_dims(handle, out_name.as_ptr(), out_dims.as_mut_ptr(), 8) };
         let mut total = 1i32;
         let mut shape = Vec::new();
-        for i in 0..ndim as usize {
-            total *= out_dims[i];
-            shape.push(out_dims[i] as usize);
+        for dim in out_dims.iter().take(ndim as usize) {
+            total *= dim;
+            shape.push(*dim as usize);
         }
         log(&format!("  output shape: {:?}, total={}", shape, total));
 

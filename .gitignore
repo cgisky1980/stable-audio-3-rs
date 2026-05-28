@@ -3,3 +3,4 @@
 *.bin
 *.npy
 mnn_cuda_fallback_ops.txt
+MNN.dll

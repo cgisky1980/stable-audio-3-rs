@@ -108,8 +108,8 @@ impl BridgeLib {
             (self.fn_get_output_dims)(handle, out_name.as_ptr(), out_dims.as_mut_ptr(), 8)
         };
         let mut total = 1i32;
-        for i in 0..ndim as usize {
-            total *= out_dims[i];
+        for dim in out_dims.iter().take(ndim as usize) {
+            total *= dim;
         }
 
         let mut out_data = vec![0.0f32; total as usize];
@@ -190,8 +190,9 @@ fn main() -> Result<()> {
         let ort_lib = std::path::PathBuf::from(ort_lib_dir).join("onnxruntime.dll");
         ort::init_from(&ort_lib)?.commit();
 
-        let mut sa3 =
-            sa3_rs::StableAudio3::new(models_dir, "sm-music", false, true, 1, false, duration)?;
+        let mut sa3 = sa3_rs::StableAudio3::new(
+            models_dir, "sm-music", false, true, 1, false, false, duration,
+        )?;
 
         use rand::{Rng, SeedableRng};
         use rand_distr::StandardNormal;

@@ -445,9 +445,11 @@ impl StableAudio3Models {
         use_mnn: bool,
         mnn_gpu: i32,
         mnn_int8: bool,
+        mnn_fp32: bool,
         t_lat: usize,
     ) -> Result<Self> {
         let variant_key = variant.replace("sm-", "");
+        let mnn_precision: i32 = if mnn_fp32 { 1 } else { 0 };
 
         if use_mnn {
             let (t5_ort, t5_mnn) = {
@@ -469,7 +471,7 @@ impl StableAudio3Models {
                 } else {
                     format!("number_conditioner_{variant_key}_fp16.mnn")
                 };
-                let m = MNNModel::load(models_dir, &name, mnn_gpu, 12, 0)?;
+                let m = MNNModel::load(models_dir, &name, mnn_gpu, 12, mnn_precision)?;
                 log(&format!(
                     "    NC 加载耗时: {:.2}s",
                     t0.elapsed().as_secs_f32()
@@ -489,7 +491,7 @@ impl StableAudio3Models {
                         format!("dit_{variant_key}_fp16_v2_f32io.mnn")
                     }
                 };
-                let m = MNNModel::load(models_dir, &name, mnn_gpu, 12, 0)?;
+                let m = MNNModel::load(models_dir, &name, mnn_gpu, 12, mnn_precision)?;
                 m.resize("x", &[1, 256, t_lat as i32])?;
                 m.resize("cross_attn_cond", &[1, 257, 768])?;
                 m.resize("global_embed", &[1, 768])?;
@@ -504,8 +506,14 @@ impl StableAudio3Models {
             };
             let (dec_ort, dec_mnn) = {
                 let t0 = std::time::Instant::now();
-                log("  加载 Decoder (MNN FusedWN, chunk_size=256)...");
-                let m = MNNModel::load(models_dir, "decoder_fused_wn.mnn", mnn_gpu, 12, 0)?;
+                log("  加载 Decoder (MNN FusedWN)...");
+                let m = MNNModel::load(
+                    models_dir,
+                    "decoder_fused_wn.mnn",
+                    mnn_gpu,
+                    12,
+                    mnn_precision,
+                )?;
                 m.resize("latents", &[1, 256, 256])?;
                 m.resize_commit()?;
                 log(&format!(
@@ -514,7 +522,7 @@ impl StableAudio3Models {
                 ));
                 (None, Some(m))
             };
-            let dec_needs_resize = false;
+            let dec_needs_resize = true;
             let (encoder_mnn, bottleneck) = {
                 let enc_name = if mnn_int8 {
                     "encoder_int8.mnn"
@@ -526,7 +534,7 @@ impl StableAudio3Models {
                 if enc_path.exists() && bn_path.exists() {
                     let t0 = std::time::Instant::now();
                     log(&format!("  加载 Encoder (MNN): {enc_name}..."));
-                    let m = MNNModel::load(models_dir, enc_name, mnn_gpu, 12, 0)?;
+                    let m = MNNModel::load(models_dir, enc_name, mnn_gpu, 12, mnn_precision)?;
                     let bn = SoftNormBottleneck::load(models_dir)?;
                     log(&format!(
                         "    Encoder 加载耗时: {:.2}s",
@@ -546,7 +554,7 @@ impl StableAudio3Models {
             };
             let mnn_label = if mnn_int8 { "MNN-INT8" } else { "MNN-FP16" };
             log(&format!(
-                "  所有模型加载完成 (T5=ORT, NC/DiT={mnn_label}, Decoder=ORT)"
+                "  所有模型加载完成 (T5=ORT, NC/DiT/Decoder={mnn_label})"
             ));
             Ok(Self {
                 t5_ort,

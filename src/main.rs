@@ -59,6 +59,9 @@ struct Cli {
     #[arg(long, default_value_t = false)]
     mnn_int8: bool,
 
+    #[arg(long, default_value_t = false)]
+    mnn_fp32: bool,
+
     #[arg(long)]
     init_audio: Option<String>,
 
@@ -120,6 +123,7 @@ fn main() -> Result<()> {
         cli.mnn,
         cli.mnn_gpu,
         cli.mnn_int8,
+        cli.mnn_fp32,
         cli.duration,
     )?;
     let t_load = t0.elapsed();
