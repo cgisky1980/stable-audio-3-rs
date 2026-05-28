@@ -446,13 +446,23 @@ impl StableAudio3Models {
         mnn_gpu: i32,
         mnn_int8: bool,
         mnn_fp32: bool,
+        mnn_t5: bool,
         t_lat: usize,
     ) -> Result<Self> {
         let variant_key = variant.replace("sm-", "");
         let mnn_precision: i32 = if mnn_fp32 { 1 } else { 0 };
 
         if use_mnn {
-            let (t5_ort, t5_mnn) = {
+            let (t5_ort, t5_mnn) = if mnn_t5 {
+                let t0 = std::time::Instant::now();
+                log("  加载 T5 (MNN CPU)...");
+                let m = MNNModel::load(models_dir, "text_encoder.mnn", 0, 12, mnn_precision)?;
+                log(&format!(
+                    "    T5 加载耗时: {:.2}s",
+                    t0.elapsed().as_secs_f32()
+                ));
+                (None, Some(m))
+            } else {
                 let t0 = std::time::Instant::now();
                 log("  加载 T5 (ORT Q8)...");
                 let t5_path = models_dir.join("text_encoder_q8.onnx");
@@ -552,9 +562,10 @@ impl StableAudio3Models {
                 Tokenizer::from_file(&tok_path)
                     .map_err(|e| anyhow!("Failed to load tokenizer: {e}"))?
             };
-            let mnn_label = if mnn_int8 { "MNN-INT8" } else { "MNN-FP16" };
+            let t5_label = if mnn_t5 { "MNN-CPU" } else { "ORT" };
+            let mnn_label = if mnn_int8 { "MNN-INT8" } else { "MNN-CUDA" };
             log(&format!(
-                "  所有模型加载完成 (T5=ORT, NC/DiT/Decoder={mnn_label})"
+                "  所有模型加载完成 (T5={t5_label}, NC/DiT/Decoder={mnn_label})"
             ));
             Ok(Self {
                 t5_ort,

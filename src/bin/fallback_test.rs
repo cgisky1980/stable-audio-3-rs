@@ -191,7 +191,7 @@ fn main() -> Result<()> {
         ort::init_from(&ort_lib)?.commit();
 
         let mut sa3 = sa3_rs::StableAudio3::new(
-            models_dir, "sm-music", false, true, 1, false, false, duration,
+            models_dir, "sm-music", false, true, 1, false, false, false, duration,
         )?;
 
         use rand::{Rng, SeedableRng};
