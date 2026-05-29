@@ -1,5 +1,5 @@
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
 use ndarray::{Array1, Array2, Array3};
@@ -9,6 +9,43 @@ use ort::value::Tensor;
 use tokenizers::Tokenizer;
 
 use crate::config::{AUDIO_CHANNELS, IO_CHANNELS, PATCHED_CHANNELS, PATCH_SIZE, TEXT_MAX_LENGTH};
+
+#[cfg(target_os = "windows")]
+const BRIDGE_LIB_NAME: &str = "mnn_dit_bridge.dll";
+#[cfg(target_os = "linux")]
+const BRIDGE_LIB_NAME: &str = "libmnn_dit_bridge.so";
+#[cfg(target_os = "macos")]
+const BRIDGE_LIB_NAME: &str = "libmnn_dit_bridge.dylib";
+
+fn find_bridge_lib(models_dir: &Path) -> Result<PathBuf> {
+    let local = models_dir.join(BRIDGE_LIB_NAME);
+    if local.exists() {
+        return Ok(local);
+    }
+
+    if let Some(dir) = option_env!("MNN_LIBS_DIR") {
+        let build_lib = Path::new(dir).join(BRIDGE_LIB_NAME);
+        if build_lib.exists() {
+            return Ok(build_lib);
+        }
+    }
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            let exe_lib = exe_dir.join(BRIDGE_LIB_NAME);
+            if exe_lib.exists() {
+                return Ok(exe_lib);
+            }
+        }
+    }
+
+    Err(anyhow!(
+        "Bridge library '{BRIDGE_LIB_NAME}' not found in {} or MNN_LIBS_DIR.\n\
+         Run 'cargo build' with internet access for automatic download, \
+         or download MNN libs manually.",
+        models_dir.display()
+    ))
+}
 
 fn log(msg: &str) {
     println!("{msg}");
@@ -81,7 +118,7 @@ impl MNNModel {
         threads: i32,
         precision: i32,
     ) -> Result<Self> {
-        let bridge_dll = models_dir.join("mnn_dit_bridge.dll");
+        let bridge_dll = find_bridge_lib(models_dir)?;
         let model_path = models_dir.join(model_file);
 
         let lib = unsafe {

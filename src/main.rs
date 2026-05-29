@@ -101,11 +101,32 @@ fn main() -> Result<()> {
     log("ORT 初始化完成");
 
     if cli.mnn {
-        let mnn_dir = cli.models_dir.join("MNN.dll");
-        if let Some(parent) = mnn_dir.parent() {
-            let current_path = std::env::var("PATH").unwrap_or_default();
-            let new_path = format!("{};{}", parent.display(), current_path);
-            std::env::set_var("PATH", &new_path);
+        #[cfg(target_os = "windows")]
+        {
+            let mnn_dir = cli.models_dir.join("MNN.dll");
+            if let Some(parent) = mnn_dir.parent() {
+                let current_path = std::env::var("PATH").unwrap_or_default();
+                let new_path = format!("{};{}", parent.display(), current_path);
+                std::env::set_var("PATH", &new_path);
+            }
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let mnn_dir = cli.models_dir.join("libMNN.so");
+            if let Some(parent) = mnn_dir.parent() {
+                let current = std::env::var("LD_LIBRARY_PATH").unwrap_or_default();
+                let new_val = format!("{}:{}", parent.display(), current);
+                std::env::set_var("LD_LIBRARY_PATH", &new_val);
+            }
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let mnn_dir = cli.models_dir.join("libMNN.dylib");
+            if let Some(parent) = mnn_dir.parent() {
+                let current = std::env::var("DYLD_LIBRARY_PATH").unwrap_or_default();
+                let new_val = format!("{}:{}", parent.display(), current);
+                std::env::set_var("DYLD_LIBRARY_PATH", &new_val);
+            }
         }
         log(&format!("MNN 模式 (gpu={})", cli.mnn_gpu));
     }
