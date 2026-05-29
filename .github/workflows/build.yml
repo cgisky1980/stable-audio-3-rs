@@ -9,7 +9,6 @@ on:
   workflow_dispatch:
 
 env:
-  ORT_VERSION: "1.23.2"
   MNN_REPO: "https://github.com/cgisky1980/MNN.git"
   MNN_REF: "master"
 
@@ -27,42 +26,31 @@ jobs:
             ext: .exe
             mnn_lib_name: MNN.dll
             bridge_lib_name: mnn_dit_bridge.dll
-            ort_lib_name: onnxruntime.dll
-            ort_zip: onnxruntime-win-x64-gpu-${{ env.ORT_VERSION }}.zip
-            ort_dl_dir: onnxruntime-win-x64-gpu-${{ env.ORT_VERSION }}
             cuda_version: "12.8"
             cmake_generator: "Visual Studio 17 2022"
             cmake_arch: x64
             build_cmd: cmake --build . --config Release --parallel
-            mnn_lib_path: build/Release/MNN.lib
             mnn_dll_path: build/Release/MNN.dll
           - os: ubuntu-latest
-            backend: cpu
+            backend: cuda
             target: x86_64-unknown-linux-gnu
             ext: ""
             mnn_lib_name: libMNN.so
             bridge_lib_name: libmnn_dit_bridge.so
-            ort_lib_name: libonnxruntime.so
-            ort_zip: onnxruntime-linux-x64-gpu-${{ env.ORT_VERSION }}.tgz
-            ort_dl_dir: onnxruntime-linux-x64-gpu-${{ env.ORT_VERSION }}
+            cuda_version: "12.8"
             cmake_generator: "Unix Makefiles"
             cmake_arch: ""
             build_cmd: cmake --build . --config Release --parallel $(nproc)
-            mnn_lib_path: build/libMNN.so
             mnn_dll_path: build/libMNN.so
           - os: macos-latest
-            backend: cpu
-            target: x86_64-apple-darwin
+            backend: metal
+            target: aarch64-apple-darwin
             ext: ""
             mnn_lib_name: libMNN.dylib
             bridge_lib_name: libmnn_dit_bridge.dylib
-            ort_lib_name: libonnxruntime.dylib
-            ort_zip: onnxruntime-osx-universal2-${{ env.ORT_VERSION }}.tgz
-            ort_dl_dir: onnxruntime-osx-universal2-${{ env.ORT_VERSION }}
             cmake_generator: "Unix Makefiles"
             cmake_arch: ""
             build_cmd: cmake --build . --config Release --parallel $(sysctl -n hw.logicalcpu)
-            mnn_lib_path: build/libMNN.dylib
             mnn_dll_path: build/libMNN.dylib
 
     steps:
@@ -77,7 +65,7 @@ jobs:
           path: MNN
 
       - name: Install CUDA Toolkit (Windows)
-        if: matrix.backend == 'cuda'
+        if: runner.os == 'Windows'
         shell: powershell
         run: |
           $cudaUrl = "https://developer.download.nvidia.com/compute/cuda/${{ matrix.cuda_version }}/local_installers/cuda_${{ matrix.cuda_version }}_windows_network.exe"
@@ -85,16 +73,25 @@ jobs:
           Invoke-WebRequest -Uri $cudaUrl -OutFile $installer
           Start-Process -Wait -NoNewWindow $installer -ArgumentList "-s nvcc_${{ matrix.cuda_version }} cudart_${{ matrix.cuda_version }}"
           Write-Output "CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${{ matrix.cuda_version }}"
-          "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${{ matrix.cuda_version }}\bin" >> $env:GITHUB_PATH
+          "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${{ matrix.cuda_version }}\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
-      - name: Install Linux deps
+      - name: Install CUDA Toolkit (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libprotobuf-dev protobuf-compiler
+          sudo apt-get install -y wget libprotobuf-dev protobuf-compiler
+          wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+          sudo dpkg -i cuda-keyring_1.1-1_all.deb
+          sudo apt-get update
+          sudo apt-get install -y cuda-toolkit-12-8
+
+      - name: Install macOS deps
+        if: runner.os == 'macOS'
+        run: |
+          brew install protobuf
 
       - name: Configure MNN (Windows CUDA)
-        if: matrix.backend == 'cuda'
+        if: runner.os == 'Windows'
         working-directory: MNN
         run: |
           mkdir build
@@ -110,14 +107,14 @@ jobs:
             -DMNN_OPENCL=OFF `
             -DMNN_VULKAN=OFF
 
-      - name: Configure MNN (Linux)
+      - name: Configure MNN (Linux CUDA)
         if: runner.os == 'Linux'
         working-directory: MNN
         run: |
           mkdir build && cd build
           cmake .. -G "${{ matrix.cmake_generator }}" \
             -DMNN_BUILD_SHARED_LIBS=ON \
-            -DMNN_CUDA=OFF \
+            -DMNN_CUDA=ON \
             -DCMAKE_BUILD_TYPE=Release \
             -DMNN_BUILD_CONVERTER=ON \
             -DMNN_BUILD_DEMOS=OFF \
@@ -125,7 +122,7 @@ jobs:
             -DMNN_OPENCL=OFF \
             -DMNN_VULKAN=OFF
 
-      - name: Configure MNN (macOS)
+      - name: Configure MNN (macOS Metal)
         if: runner.os == 'macOS'
         working-directory: MNN
         run: |
@@ -149,7 +146,7 @@ jobs:
         working-directory: MNN/bridge
         run: |
           mkdir build && cd build
-          cmake .. -G "${{ matrix.cmake_generator }}" ${{ matrix.cmake_arch != '' && format('-A {0}', matrix.cmake_arch) || '' }} -DMNN_BUILD_DIR="$(pwd)/../../build" -DCMAKE_BUILD_TYPE=Release
+          cmake .. -G "${{ matrix.cmake_generator }}" -DMNN_BUILD_DIR="$(cd ../.. && pwd)/build" -DCMAKE_BUILD_TYPE=Release
           ${{ matrix.build_cmd }}
 
       - name: Collect MNN artifacts
@@ -158,18 +155,6 @@ jobs:
           mkdir -p dist
           cp MNN/${{ matrix.mnn_dll_path }} dist/${{ matrix.mnn_lib_name }}
           cp MNN/bridge/build/${{ matrix.bridge_lib_name }} dist/${{ matrix.bridge_lib_name }}
-
-      - name: Download ONNX Runtime
-        shell: bash
-        run: |
-          curl -L -o ort.zip "https://github.com/microsoft/onnxruntime/releases/download/v${{ env.ORT_VERSION }}/${{ matrix.ort_zip }}"
-          if [[ "${{ matrix.ort_zip }}" == *.zip ]]; then
-            unzip -q ort.zip
-          else
-            tar -xzf ort.zip
-          fi
-          cp ${{ matrix.ort_dl_dir }}/lib/${{ matrix.ort_lib_name }} dist/
-          rm -rf ${{ matrix.ort_dl_dir }} ort.zip
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
