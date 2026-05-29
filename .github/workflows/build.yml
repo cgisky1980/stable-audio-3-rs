@@ -1,0 +1,207 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  ORT_VERSION: "1.23.2"
+  MNN_REPO: "https://github.com/cgisky1980/MNN.git"
+  MNN_REF: "master"
+
+jobs:
+  build:
+    name: ${{ matrix.os }} (${{ matrix.backend }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            backend: cuda
+            target: x86_64-pc-windows-msvc
+            ext: .exe
+            mnn_lib_name: MNN.dll
+            bridge_lib_name: mnn_dit_bridge.dll
+            ort_lib_name: onnxruntime.dll
+            ort_zip: onnxruntime-win-x64-gpu-${{ env.ORT_VERSION }}.zip
+            ort_dl_dir: onnxruntime-win-x64-gpu-${{ env.ORT_VERSION }}
+            cuda_version: "12.8"
+            cmake_generator: "Visual Studio 17 2022"
+            cmake_arch: x64
+            build_cmd: cmake --build . --config Release --parallel
+            mnn_lib_path: build/Release/MNN.lib
+            mnn_dll_path: build/Release/MNN.dll
+          - os: ubuntu-latest
+            backend: cpu
+            target: x86_64-unknown-linux-gnu
+            ext: ""
+            mnn_lib_name: libMNN.so
+            bridge_lib_name: libmnn_dit_bridge.so
+            ort_lib_name: libonnxruntime.so
+            ort_zip: onnxruntime-linux-x64-gpu-${{ env.ORT_VERSION }}.tgz
+            ort_dl_dir: onnxruntime-linux-x64-gpu-${{ env.ORT_VERSION }}
+            cmake_generator: "Unix Makefiles"
+            cmake_arch: ""
+            build_cmd: cmake --build . --config Release --parallel $(nproc)
+            mnn_lib_path: build/libMNN.so
+            mnn_dll_path: build/libMNN.so
+          - os: macos-latest
+            backend: cpu
+            target: x86_64-apple-darwin
+            ext: ""
+            mnn_lib_name: libMNN.dylib
+            bridge_lib_name: libmnn_dit_bridge.dylib
+            ort_lib_name: libonnxruntime.dylib
+            ort_zip: onnxruntime-osx-universal2-${{ env.ORT_VERSION }}.tgz
+            ort_dl_dir: onnxruntime-osx-universal2-${{ env.ORT_VERSION }}
+            cmake_generator: "Unix Makefiles"
+            cmake_arch: ""
+            build_cmd: cmake --build . --config Release --parallel $(sysctl -n hw.logicalcpu)
+            mnn_lib_path: build/libMNN.dylib
+            mnn_dll_path: build/libMNN.dylib
+
+    steps:
+      - name: Checkout sa3-rs
+        uses: actions/checkout@v4
+
+      - name: Checkout MNN
+        uses: actions/checkout@v4
+        with:
+          repository: cgisky1980/MNN
+          ref: ${{ env.MNN_REF }}
+          path: MNN
+
+      - name: Install CUDA Toolkit (Windows)
+        if: matrix.backend == 'cuda'
+        shell: powershell
+        run: |
+          $cudaUrl = "https://developer.download.nvidia.com/compute/cuda/${{ matrix.cuda_version }}/local_installers/cuda_${{ matrix.cuda_version }}_windows_network.exe"
+          $installer = "$env:TEMP\cuda_installer.exe"
+          Invoke-WebRequest -Uri $cudaUrl -OutFile $installer
+          Start-Process -Wait -NoNewWindow $installer -ArgumentList "-s nvcc_${{ matrix.cuda_version }} cudart_${{ matrix.cuda_version }}"
+          Write-Output "CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${{ matrix.cuda_version }}"
+          "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${{ matrix.cuda_version }}\bin" >> $env:GITHUB_PATH
+
+      - name: Install Linux deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libprotobuf-dev protobuf-compiler
+
+      - name: Configure MNN (Windows CUDA)
+        if: matrix.backend == 'cuda'
+        working-directory: MNN
+        run: |
+          mkdir build
+          cd build
+          cmake .. -G "${{ matrix.cmake_generator }}" -A ${{ matrix.cmake_arch }} `
+            -DMNN_BUILD_SHARED_LIBS=ON `
+            -DMNN_CUDA=ON `
+            -DMNN_CUDA_NATIVE_ARCH=ON `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DMNN_BUILD_CONVERTER=ON `
+            -DMNN_BUILD_DEMOS=OFF `
+            -DMNN_BUILD_TEST=OFF `
+            -DMNN_OPENCL=OFF `
+            -DMNN_VULKAN=OFF
+
+      - name: Configure MNN (Linux)
+        if: runner.os == 'Linux'
+        working-directory: MNN
+        run: |
+          mkdir build && cd build
+          cmake .. -G "${{ matrix.cmake_generator }}" \
+            -DMNN_BUILD_SHARED_LIBS=ON \
+            -DMNN_CUDA=OFF \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DMNN_BUILD_CONVERTER=ON \
+            -DMNN_BUILD_DEMOS=OFF \
+            -DMNN_BUILD_TEST=OFF \
+            -DMNN_OPENCL=OFF \
+            -DMNN_VULKAN=OFF
+
+      - name: Configure MNN (macOS)
+        if: runner.os == 'macOS'
+        working-directory: MNN
+        run: |
+          mkdir build && cd build
+          cmake .. -G "${{ matrix.cmake_generator }}" \
+            -DMNN_BUILD_SHARED_LIBS=ON \
+            -DMNN_CUDA=OFF \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DMNN_BUILD_CONVERTER=ON \
+            -DMNN_BUILD_DEMOS=OFF \
+            -DMNN_BUILD_TEST=OFF \
+            -DMNN_METAL=ON \
+            -DMNN_OPENCL=OFF \
+            -DMNN_VULKAN=OFF
+
+      - name: Build MNN
+        working-directory: MNN
+        run: ${{ matrix.build_cmd }}
+
+      - name: Build bridge
+        working-directory: MNN/bridge
+        run: |
+          mkdir build && cd build
+          cmake .. -G "${{ matrix.cmake_generator }}" ${{ matrix.cmake_arch != '' && format('-A {0}', matrix.cmake_arch) || '' }} -DMNN_BUILD_DIR="$(pwd)/../../build" -DCMAKE_BUILD_TYPE=Release
+          ${{ matrix.build_cmd }}
+
+      - name: Collect MNN artifacts
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp MNN/${{ matrix.mnn_dll_path }} dist/${{ matrix.mnn_lib_name }}
+          cp MNN/bridge/build/${{ matrix.bridge_lib_name }} dist/${{ matrix.bridge_lib_name }}
+
+      - name: Download ONNX Runtime
+        shell: bash
+        run: |
+          curl -L -o ort.zip "https://github.com/microsoft/onnxruntime/releases/download/v${{ env.ORT_VERSION }}/${{ matrix.ort_zip }}"
+          if [[ "${{ matrix.ort_zip }}" == *.zip ]]; then
+            unzip -q ort.zip
+          else
+            tar -xzf ort.zip
+          fi
+          cp ${{ matrix.ort_dl_dir }}/lib/${{ matrix.ort_lib_name }} dist/
+          rm -rf ${{ matrix.ort_dl_dir }} ort.zip
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build sa3-rs
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package artifacts
+        shell: bash
+        run: |
+          cp target/${{ matrix.target }}/release/sa3-cli${{ matrix.ext }} dist/
+          TARNAME="sa3-rs-${{ matrix.os }}-${{ matrix.backend }}"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "$TARNAME.zip" ./dist/*
+          else
+            tar -czf "$TARNAME.tar.gz" -C dist .
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sa3-rs-${{ matrix.os }}-${{ matrix.backend }}
+          path: |
+            sa3-rs-${{ matrix.os }}-${{ matrix.backend }}.tar.gz
+            sa3-rs-${{ matrix.os }}-${{ matrix.backend }}.zip
+
+      - name: Upload release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            sa3-rs-${{ matrix.os }}-${{ matrix.backend }}.tar.gz
+            sa3-rs-${{ matrix.os }}-${{ matrix.backend }}.zip
