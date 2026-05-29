@@ -156,6 +156,25 @@ jobs:
           cp MNN/${{ matrix.mnn_dll_path }} dist/${{ matrix.mnn_lib_name }}
           cp MNN/bridge/build/${{ matrix.bridge_lib_name }} dist/${{ matrix.bridge_lib_name }}
 
+      - name: Upload MNN libs (release only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          MNN_PKG="mnn-libs-${{ matrix.os }}-${{ matrix.backend }}"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "$MNN_PKG.zip" ./dist/*
+          else
+            tar -czf "$MNN_PKG.tar.gz" -C dist .
+          fi
+
+      - name: Upload MNN libs release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            mnn-libs-${{ matrix.os }}-${{ matrix.backend }}.tar.gz
+            mnn-libs-${{ matrix.os }}-${{ matrix.backend }}.zip
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
