@@ -68,12 +68,11 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          $cudaUrl = "https://developer.download.nvidia.com/compute/cuda/${{ matrix.cuda_version }}/local_installers/cuda_${{ matrix.cuda_version }}_windows_network.exe"
+          $cudaUrl = "https://developer.download.nvidia.com/compute/cuda/12.8.0/network_installers/cuda_12.8.0_windows_network.exe"
           $installer = "$env:TEMP\cuda_installer.exe"
           Invoke-WebRequest -Uri $cudaUrl -OutFile $installer
-          Start-Process -Wait -NoNewWindow $installer -ArgumentList "-s nvcc_${{ matrix.cuda_version }} cudart_${{ matrix.cuda_version }}"
-          Write-Output "CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${{ matrix.cuda_version }}"
-          "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${{ matrix.cuda_version }}\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+          Start-Process -Wait -NoNewWindow $installer -ArgumentList "-s"
+          echo "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Install CUDA Toolkit (Linux)
         if: runner.os == 'Linux'
@@ -139,7 +138,7 @@ jobs:
             -DMNN_VULKAN=OFF
 
       - name: Build MNN
-        working-directory: MNN
+        working-directory: MNN/build
         run: ${{ matrix.build_cmd }}
 
       - name: Build bridge
