@@ -22,6 +22,11 @@ fn find_bridge_lib(models_dir: &Path) -> Result<PathBuf> {
     if local.exists() {
         return Ok(local);
     }
+    // Also check dll/ subdirectory
+    let dll_sub = models_dir.join("dll").join(BRIDGE_LIB_NAME);
+    if dll_sub.exists() {
+        return Ok(dll_sub);
+    }
 
     if let Some(dir) = option_env!("MNN_LIBS_DIR") {
         let build_lib = Path::new(dir).join(BRIDGE_LIB_NAME);
