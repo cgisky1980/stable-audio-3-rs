@@ -27,10 +27,10 @@ jobs:
             mnn_lib_name: MNN.dll
             bridge_lib_name: mnn_dit_bridge.dll
             cuda_version: "12.8"
-            cmake_generator: "Visual Studio 17 2022"
-            cmake_arch: x64
+            cmake_generator: "Ninja"
+            cmake_arch: ""
             build_cmd: cmake --build . --config Release --parallel
-            mnn_dll_path: build/Release/MNN.dll
+            mnn_dll_path: build/MNN.dll
           - os: ubuntu-latest
             backend: cuda
             target: x86_64-unknown-linux-gnu
@@ -95,7 +95,7 @@ jobs:
         run: |
           mkdir build
           cd build
-          cmake .. -G "${{ matrix.cmake_generator }}" -A ${{ matrix.cmake_arch }} `
+          cmake .. -G "${{ matrix.cmake_generator }}" `
             -DMNN_BUILD_SHARED_LIBS=ON `
             -DMNN_CUDA=ON `
             -DMNN_CUDA_NATIVE_ARCH=ON `
